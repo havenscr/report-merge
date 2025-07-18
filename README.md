@@ -1,4 +1,4 @@
-# Enhanced Power BI Report Merger v2.0
+# Enhanced Power BI Report Merger v1.0
 
 **Built by Reid Havens of Analytic Endeavors**  
 **Website: https://analyticsendeavors.com**
