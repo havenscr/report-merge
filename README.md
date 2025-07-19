@@ -1,7 +1,7 @@
-# Enhanced Power BI Report Merger v1.0
+# Power BI Report Merger v1.0
 
-**Built by [Reid Havens](https://www.linkedin.com/in/reidhavens/){:target="_blank"} of Analytic Endeavors**  
-**Website: https://analyticsendeavors.com**{:target="_blank"}
+**Built by [Reid Havens](https://www.linkedin.com/in/reidhavens/) of Analytic Endeavors**  
+**Website: [https://analyticsendeavors.com](https://analyticsendeavors.com)**
 
 ## ⚠️ Important Disclaimer
 
@@ -183,8 +183,8 @@ The enhanced version uses a clean composition structure with four main component
 ## 📞 Support & Contact
 
 **Analytic Endeavors**  
-**Website**: https://analyticsendeavors.com{:target="_blank"}  
-**Built by**: [Reid Havens](https://www.linkedin.com/in/reidhavens/){:target="_blank"}  
+**Website**: [https://analyticsendeavors.com](https://analyticsendeavors.com)  
+**Built by**: [Reid Havens](https://www.linkedin.com/in/reidhavens/)  
 
 For technical support, feature requests, or consulting services, please visit our website.
 
