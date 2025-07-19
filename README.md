@@ -7,7 +7,7 @@
 
 The Enhanced Power BI Report Merger is a professional-grade tool designed to intelligently combine two thin PBIP reports into a single unified report. This enhanced version features a modern user interface, comprehensive help system, and advanced branding integration.
 
-## 🚀 Key Enhancements in v2.0
+## 🚀 Key Features in v1.0
 
 ### **Professional Branding & UI**
 - Modern analytics-themed interface with Analytic Endeavors branding
