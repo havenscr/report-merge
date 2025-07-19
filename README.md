@@ -1,6 +1,6 @@
-# Power BI Report Merger v1.0
+# Enhanced Power BI Report Merger v1.0
 
-**Built by [Reid Havens](https://www.linkedin.com/in/reidhavens/) of [Analytic Endeavors](https://analyticsendeavors.com)** 
+**Built by [Reid Havens](https://www.linkedin.com/in/reidhavens/) of [https://analyticsendeavors.com](https://analyticsendeavors.com)**  
 
 ## ⚠️ Important Disclaimer
 
@@ -65,20 +65,43 @@ The Enhanced Power BI Report Merger is a professional-grade tool designed to int
 
 ## 🛠️ Installation & Usage
 
+### **📁 Project Structure**
+- **`src/` folder**: Contains the base source code and Python files
+- **`builds/` folder**: Contains ready-to-use executable files:
+  - **`Power BI Report Merger v1.0.0 Setup.exe`**: Installation package for installing as an external tool
+  - **`Power BI Report Merger.exe`**: Standalone executable that runs without installation
+
+### **Installation Options**
+
+#### **Option 1: Standalone Executable (Recommended for Quick Use)**
+1. Navigate to the `builds/` folder
+2. Double-click **`Power BI Report Merger.exe`**
+3. Tool launches immediately - no installation required
+
+#### **Option 2: Install as External Tool**
+1. Navigate to the `builds/` folder
+2. Run **`Power BI Report Merger v1.0.0 Setup.exe`**
+3. Follow installation wizard to install as a system tool
+4. Access from Start Menu or desktop shortcut
+
+#### **Option 3: Run from Source Code**
+1. Navigate to the `src/` folder
+2. Run `run_enhanced_merger.bat` (Windows) or execute `python enhanced_pbip_merger.py`
+3. Requires Python 3.7+ with tkinter support
+
 ### **⚠️ Pre-Usage Checklist**
 - [ ] **Backup original reports** to a safe location
 - [ ] **Verify organizational approval** for using third-party tools
 - [ ] **Test in development environment** first
 - [ ] **Ensure you have rollback capability**
 
-### **Quick Start**
-1. **Download** the enhanced version files to a folder
-2. **Run** `run_enhanced_merger.bat` (Windows) or execute `python enhanced_pbip_merger.py`
-3. **Select** your Report A and Report B files using the browse buttons
-4. **Analyze** reports by clicking "🔍 ANALYZE REPORTS" (auto-enabled when both files selected)
-5. **Review** analysis results and choose merge options
-6. **Execute** merge by clicking "🚀 EXECUTE MERGE"
-7. **⚠️ Validate merged report** thoroughly before use
+### **Quick Start (Any Method)**
+1. **Launch** the tool using any of the installation options above
+2. **Select** your Report A and Report B files using the browse buttons
+3. **Analyze** reports by clicking "🔍 ANALYZE REPORTS" (auto-enabled when both files selected)
+4. **Review** analysis results and choose merge options
+5. **Execute** merge by clicking "🚀 EXECUTE MERGE"
+6. **⚠️ Validate merged report** thoroughly before use
 
 ### **Professional Workflow**
 1. **📁 DATA SOURCES**
