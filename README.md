@@ -3,6 +3,17 @@
 **Built by Reid Havens of Analytic Endeavors**  
 **Website: https://analyticsendeavors.com**
 
+## ⚠️ Important Disclaimer
+
+**This is a third-party tool and is NOT officially supported by Microsoft.** Report merging using this method is not an officially supported Power BI operation. Use at your own discretion and always:
+
+- **Back up your original reports** before attempting any merge operations
+- **Test thoroughly** in development environments before using on production reports
+- **Validate all merged content** to ensure data integrity and functionality
+- **Be aware** that future Power BI updates may change file formats or structures
+
+Microsoft does not provide support for issues arising from third-party report manipulation tools. Always follow your organization's data governance and change management policies.
+
 ## Overview
 
 The Enhanced Power BI Report Merger is a professional-grade tool designed to intelligently combine two thin PBIP reports into a single unified report. This enhanced version features a modern user interface, comprehensive help system, and advanced branding integration.
@@ -37,15 +48,29 @@ The Enhanced Power BI Report Merger is a professional-grade tool designed to int
 - **Log Export**: Save analysis logs for audit trails
 - **Professional Error Handling**: User-friendly error messages with guidance
 
-## 📋 Requirements
+## 📋 Requirements & Limitations
 
+### **System Requirements**
 - **Input Files**: Thin PBIP reports (.pbip files)
 - **Structure**: Corresponding .Report directories must exist
 - **Compatibility**: Files must NOT have semantic models (.SemanticModel folders)
 - **System**: Python 3.7+ with tkinter support
 - **Permissions**: Write access to output location
 
+### **⚠️ Important Limitations**
+- **Unsupported by Microsoft**: This tool manipulates Power BI file structures in ways not officially supported
+- **Compatibility Risk**: Future Power BI updates may break functionality
+- **Data Risk**: Always backup original files before use
+- **Testing Required**: Thoroughly validate merged reports before deployment
+- **Organizational Policy**: Ensure compliance with your organization's data governance policies
+
 ## 🛠️ Installation & Usage
+
+### **⚠️ Pre-Usage Checklist**
+- [ ] **Backup original reports** to a safe location
+- [ ] **Verify organizational approval** for using third-party tools
+- [ ] **Test in development environment** first
+- [ ] **Ensure you have rollback capability**
 
 ### **Quick Start**
 1. **Download** the enhanced version files to a folder
@@ -54,6 +79,7 @@ The Enhanced Power BI Report Merger is a professional-grade tool designed to int
 4. **Analyze** reports by clicking "🔍 ANALYZE REPORTS" (auto-enabled when both files selected)
 5. **Review** analysis results and choose merge options
 6. **Execute** merge by clicking "🚀 EXECUTE MERGE"
+7. **⚠️ Validate merged report** thoroughly before use
 
 ### **Professional Workflow**
 1. **📁 DATA SOURCES**
@@ -70,7 +96,14 @@ The Enhanced Power BI Report Merger is a professional-grade tool designed to int
 3. **🚀 MERGE EXECUTION**
    - Click "Execute Merge" to combine reports
    - Monitor real-time progress
-   - Verify output integrity
+   - **⚠️ Immediately test the merged report** in Power BI Desktop
+
+4. **✅ POST-MERGE VALIDATION**
+   - Open merged report in Power BI Desktop
+   - Verify all visuals render correctly
+   - Test data refresh and interactions
+   - Validate measures and calculations
+   - Check formatting and themes
 
 ## 🎨 Architecture & Composition
 
@@ -128,6 +161,25 @@ The enhanced version uses a clean composition structure with four main component
 - Comprehensive statistics and summaries
 - Export capability for audit trails
 
+## ⚠️ Risk Management & Best Practices
+
+### **Before Using This Tool**
+- **Backup Strategy**: Always maintain copies of original reports
+- **Environment Testing**: Use development/test environments first
+- **Change Management**: Follow your organization's change control processes
+- **Documentation**: Keep records of what reports were merged and when
+
+### **After Merging**
+- **Immediate Validation**: Test all functionality in the merged report
+- **Performance Testing**: Ensure the merged report performs acceptably
+- **User Acceptance**: Have end users validate the merged content
+- **Monitoring**: Watch for any issues in production use
+
+### **If Issues Arise**
+- **Rollback Plan**: Be prepared to revert to original reports
+- **Microsoft Support**: Remember that Microsoft cannot support issues from third-party tools
+- **Professional Help**: Consider consulting with Power BI experts if problems occur
+
 ## 📞 Support & Contact
 
 **Analytic Endeavors**  
@@ -136,10 +188,16 @@ The enhanced version uses a clean composition structure with four main component
 
 For technical support, feature requests, or consulting services, please visit our website.
 
+**Note**: Support is provided for the tool functionality only. Microsoft Power BI-related issues arising from merged reports should be addressed through appropriate Power BI support channels, keeping in mind the unsupported nature of this merging approach.
+
 ## 📄 License & Usage
 
 This tool is built by Analytic Endeavors for professional use in Power BI report management and consolidation workflows.
 
+**Use of this tool constitutes acceptance of the risks associated with unsupported Power BI file manipulation. Users assume full responsibility for any issues arising from the use of this tool.**
+
 ---
 
-**© 2024 Analytic Endeavors - Empowering data-driven decisions through innovative analytics solutions**
+**© 2025 Analytic Endeavors - Empowering data-driven decisions through innovative analytics solutions**
+
+*This tool is provided "as-is" without warranty. Always backup your data and test thoroughly.*
