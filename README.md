@@ -1,6 +1,6 @@
 # Enhanced Power BI Report Merger v1.0
 
-**Built by Reid Havens of Analytic Endeavors**  
+**Built by [Reid Havens](https://www.linkedin.com/in/reidhavens/) of Analytic Endeavors**  
 **Website: https://analyticsendeavors.com**
 
 ## ⚠️ Important Disclaimer
@@ -184,7 +184,7 @@ The enhanced version uses a clean composition structure with four main component
 
 **Analytic Endeavors**  
 **Website**: https://analyticsendeavors.com  
-**Built by**: Reid Havens  
+**Built by**: [Reid Havens](https://www.linkedin.com/in/reidhavens/)  
 
 For technical support, feature requests, or consulting services, please visit our website.
 
@@ -198,6 +198,6 @@ This tool is built by Analytic Endeavors for professional use in Power BI report
 
 ---
 
-**© 2025 Analytic Endeavors - Empowering data-driven decisions through innovative analytics solutions**
+**© 2024 Analytic Endeavors - Empowering data-driven decisions through innovative analytics solutions**
 
 *This tool is provided "as-is" without warranty. Always backup your data and test thoroughly.*
