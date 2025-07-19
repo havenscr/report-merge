@@ -84,11 +84,6 @@ The Enhanced Power BI Report Merger is a professional-grade tool designed to int
 3. Follow installation wizard to install as a system tool
 4. Access from Start Menu or desktop shortcut
 
-#### **Option 3: Run from Source Code**
-1. Navigate to the `src/` folder
-2. Run `run_enhanced_merger.bat` (Windows) or execute `python enhanced_pbip_merger.py`
-3. Requires Python 3.7+ with tkinter support
-
 ### **⚠️ Pre-Usage Checklist**
 - [ ] **Backup original reports** to a safe location
 - [ ] **Verify organizational approval** for using third-party tools
