@@ -1,7 +1,7 @@
 # Power BI Report Merger v1.0
 
 **Built by [Reid Havens](https://www.linkedin.com/in/reidhavens/) of Analytic Endeavors**  
-**Website: [https://analyticsendeavors.com](https://analyticsendeavors.com)**
+**Website: [Analytic Endeavors](https://analyticsendeavors.com)**
 
 ## ⚠️ Important Disclaimer
 
