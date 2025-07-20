@@ -19,7 +19,7 @@ class AppConstants:
     APP_NAME = "Power BI Report Merger"
     APP_VERSION = "v1.0 Enhanced"
     WINDOW_TITLE = f"{COMPANY_NAME} - {APP_NAME}"
-    WINDOW_SIZE = "1000x1000"
+    WINDOW_SIZE = "1000x1040"
     MIN_WINDOW_SIZE = (900, 700)
     
     # =============================================================================

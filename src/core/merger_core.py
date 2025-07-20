@@ -223,32 +223,73 @@ class ThemeManager:
         print(message)
     
     def detect_theme(self, report_dir: Path, report_name: str) -> Dict[str, Any]:
-        """Detect theme used in a report - checks both BaseThemes and BuiltInThemes."""
+        """Detect theme used in a report - checks themeCollection for active theme."""
         theme_info = self._create_default_theme_info()
         
-        # Step 1: Check report.json for active theme reference
-        active_theme_name = self._get_active_theme_from_report_json(report_dir, theme_info, report_name)
+        # Check report.json for themeCollection
+        report_json = report_dir / "definition" / "report.json"
         
-        # Step 2: If we have an active theme name, look for the theme files
-        if active_theme_name:
-            found_theme = self._find_theme_by_name(report_dir, active_theme_name)
-            if found_theme:
-                return found_theme
-            else:
-                # Theme referenced but file not found
-                return self._create_missing_theme_info(active_theme_name)
+        if not report_json.exists():
+            return theme_info
         
-        # Step 3: No explicit theme reference - scan for available theme files
-        return self._scan_for_implicit_themes(report_dir)
+        try:
+            with open(report_json, 'r', encoding='utf-8') as f:
+                report_data = json.load(f)
+        except:
+            return theme_info
+        
+        # Look for themeCollection (modern PBIP format)
+        theme_collection = report_data.get("themeCollection", {})
+        if theme_collection:
+            # The active theme is in customTheme, baseTheme is the foundation
+            custom_theme = theme_collection.get("customTheme", {})
+            base_theme = theme_collection.get("baseTheme", {})
+            
+            if custom_theme:
+                theme_name = custom_theme.get("name", "")
+                theme_type = custom_theme.get("type", "SharedResources")
+                
+                # Determine display name based on theme type and location
+                if theme_type == "SharedResources":
+                    if self._theme_exists_in_builtin(report_dir, theme_name):
+                        display_name = f"Built-in Theme: {theme_name}"
+                        actual_type = "builtin"
+                    else:
+                        display_name = f"Base Theme: {theme_name}"
+                        actual_type = "base"
+                else:
+                    display_name = f"Custom Theme: {theme_name}"
+                    actual_type = "custom"
+                
+                return {
+                    "name": theme_name,
+                    "display": display_name,
+                    "theme_type": actual_type,
+                    "active_theme": theme_collection,
+                    "base_theme": base_theme
+                }
+            elif base_theme:
+                # Only base theme, no custom theme applied
+                theme_name = base_theme.get("name", "")
+                return {
+                    "name": theme_name,
+                    "display": f"Base Theme: {theme_name}",
+                    "theme_type": "base",
+                    "active_theme": theme_collection,
+                    "base_theme": base_theme
+                }
+        
+        # Fallback to legacy theme detection
+        return self._detect_legacy_theme(report_dir, report_data)
     
     def apply_theme_choice(self, choice: str, report_a_dir: Path, report_b_dir: Path, 
                           output_report_dir: Path, report_b_name: str) -> None:
-        """Apply the selected theme choice with improved handling."""
+        """Apply the selected theme choice with proper theme implementation."""
         self.log_callback(f"   🎨 Applying theme choice: {choice}")
         
         if choice == "report_b":
-            # Use Report B theme - replace with Report B's theme
-            self._apply_report_b_theme(report_b_dir, output_report_dir)
+            # Use Report B theme - copy theme configuration and files
+            self._apply_report_b_theme(report_b_dir, output_report_dir, report_b_name)
         elif choice == "same":
             # Themes are the same - ensure consistency
             self._ensure_theme_consistency(report_a_dir, report_b_dir, output_report_dir)
@@ -398,15 +439,329 @@ class ThemeManager:
             "active_theme": None
         }
     
-    def _apply_report_b_theme(self, report_b_dir, output_report_dir):
-        """Apply Report B theme to the output."""
-        # Theme application logic would go here
+    def _apply_report_b_theme(self, report_b_dir: Path, output_report_dir: Path, report_b_name: str) -> None:
+        """Apply Report B theme to the output - complete implementation."""
         self.log_callback("     🔄 Applying Report B themes...")
+        
+        # Step 1: Read Report B's theme configuration
+        report_b_json = report_b_dir / "definition" / "report.json"
+        if not report_b_json.exists():
+            self.log_callback("     ⚠️ Report B has no report.json - keeping Report A theme")
+            return
+        
+        try:
+            with open(report_b_json, 'r', encoding='utf-8') as f:
+                report_b_data = json.load(f)
+        except Exception as e:
+            self.log_callback(f"     ⚠️ Cannot read Report B theme config: {e}")
+            return
+        
+        # Step 2: Read current output report.json
+        output_json = output_report_dir / "definition" / "report.json"
+        try:
+            with open(output_json, 'r', encoding='utf-8') as f:
+                output_data = json.load(f)
+        except Exception as e:
+            self.log_callback(f"     ❌ Cannot read output report.json: {e}")
+            return
+        
+        # Step 3: Copy themeCollection from Report B
+        report_b_theme_collection = report_b_data.get("themeCollection", {})
+        if report_b_theme_collection:
+            output_data["themeCollection"] = report_b_theme_collection
+            self.log_callback("     ✅ Theme collection updated")
+        
+        # Step 4: Update resourcePackages to include Report B's theme resources
+        self._update_theme_resources(report_b_data, output_data, report_b_dir, output_report_dir)
+        
+        # Step 5: Copy theme files from Report B
+        self._copy_theme_files(report_b_dir, output_report_dir, report_b_theme_collection)
+        
+        # Step 6: Write updated report.json
+        try:
+            with open(output_json, 'w', encoding='utf-8') as f:
+                json.dump(output_data, f, indent=2)
+            self.log_callback("     ✅ Report.json updated with Report B theme")
+        except Exception as e:
+            self.log_callback(f"     ❌ Failed to update report.json: {e}")
     
-    def _ensure_theme_consistency(self, report_a_dir, report_b_dir, output_report_dir):
+    def _ensure_theme_consistency(self, report_a_dir: Path, report_b_dir: Path, 
+                                 output_report_dir: Path) -> None:
         """Ensure theme consistency when both reports use the same theme."""
-        # Theme consistency logic would go here
         self.log_callback("     ✅ Ensuring theme consistency...")
+        
+        # When themes are the same, we still need to ensure all required theme files are present
+        # Read the current theme configuration to know what files we need
+        output_json = output_report_dir / "definition" / "report.json"
+        
+        if not output_json.exists():
+            return
+        
+        try:
+            with open(output_json, 'r', encoding='utf-8') as f:
+                output_data = json.load(f)
+            
+            theme_collection = output_data.get("themeCollection", {})
+            if theme_collection:
+                # Copy only the theme files that are actually being used
+                self._copy_theme_files(report_b_dir, output_report_dir, theme_collection)
+        except Exception as e:
+            self.log_callback(f"     ⚠️ Error ensuring theme consistency: {e}")
+        
+        # Verify the theme configuration is properly set
+        self._verify_theme_configuration(output_report_dir)
+    
+    def _theme_exists_in_builtin(self, report_dir: Path, theme_name: str) -> bool:
+        """Check if theme exists in BuiltInThemes directory."""
+        builtin_path = report_dir / "StaticResources" / "SharedResources" / "BuiltInThemes" / f"{theme_name}.json"
+        return builtin_path.exists()
+    
+    def _detect_legacy_theme(self, report_dir: Path, report_data: Dict) -> Dict[str, Any]:
+        """Fallback detection for legacy theme format."""
+        # Legacy "theme" property (for older reports)
+        if "theme" in report_data:
+            theme_section = report_data["theme"]
+            if "themeJson" in theme_section:
+                theme_name = theme_section.get("name", "Inline Theme")
+                return {
+                    "name": theme_name,
+                    "display": f"Inline Theme: {theme_name}",
+                    "theme_type": "inline",
+                    "active_theme": theme_section
+                }
+            elif "name" in theme_section:
+                theme_name = theme_section["name"]
+                return {
+                    "name": theme_name,
+                    "display": f"Named Theme: {theme_name}",
+                    "theme_type": "named",
+                    "active_theme": theme_section
+                }
+        
+        return self._create_default_theme_info()
+    
+    def _update_theme_resources(self, report_b_data: Dict, output_data: Dict, 
+                               report_b_dir: Path, output_report_dir: Path) -> None:
+        """Update resourcePackages to include theme resources from Report B."""
+        
+        # Get Report B's theme resources
+        report_b_packages = report_b_data.get("resourcePackages", [])
+        output_packages = output_data.get("resourcePackages", [])
+        
+        # Find SharedResources in both
+        output_shared = None
+        report_b_shared = None
+        
+        for package in output_packages:
+            if package.get("type") == "SharedResources":
+                output_shared = package
+                break
+        
+        for package in report_b_packages:
+            if package.get("type") == "SharedResources":
+                report_b_shared = package
+                break
+        
+        if not report_b_shared:
+            self.log_callback("     ⚠️ No SharedResources in Report B")
+            return
+        
+        # Ensure output has SharedResources package
+        if not output_shared:
+            output_shared = {
+                "name": "SharedResources",
+                "type": "SharedResources",
+                "items": []
+            }
+            output_packages.append(output_shared)
+            output_data["resourcePackages"] = output_packages
+        
+        # Add theme items from Report B to output (avoiding duplicates)
+        existing_items = {item.get("name", ""): item for item in output_shared.get("items", [])}
+        
+        for item in report_b_shared.get("items", []):
+            item_name = item.get("name", "")
+            item_type = item.get("type", "")
+            
+            # Add or update theme-related items
+            if item_type in ["BaseTheme", "CustomTheme"] or item_name:
+                existing_items[item_name] = item
+                self.log_callback(f"     ✅ Added theme resource: {item_name} ({item_type})")
+        
+        # Update the items list
+        output_shared["items"] = list(existing_items.values())
+    
+    def _copy_theme_files(self, report_b_dir: Path, output_report_dir: Path, 
+                         theme_collection: Dict) -> None:
+        """Copy only the active theme files from Report B to output."""
+        
+        if not theme_collection:
+            self.log_callback("     ⚠️ No theme collection to copy")
+            return
+        
+        # Get the active themes that need to be copied
+        custom_theme = theme_collection.get("customTheme", {})
+        base_theme = theme_collection.get("baseTheme", {})
+        
+        # Copy the active custom theme file
+        if custom_theme:
+            self._copy_specific_theme_file(report_b_dir, output_report_dir, custom_theme)
+        
+        # Copy the base theme file (always needed as foundation)
+        if base_theme:
+            self._copy_specific_theme_file(report_b_dir, output_report_dir, base_theme)
+    
+    def _copy_specific_theme_file(self, source_report_dir: Path, target_report_dir: Path,
+                                 theme_info: Dict) -> None:
+        """Copy a specific theme file based on theme info."""
+        theme_name = theme_info.get("name", "")
+        theme_type = theme_info.get("type", "SharedResources")
+        
+        if not theme_name:
+            self.log_callback("     ⚠️ No theme name specified")
+            return
+        
+        if theme_type == "SharedResources":
+            # Check if it's in BuiltInThemes first
+            if self._copy_builtin_theme_file(source_report_dir, target_report_dir, theme_name):
+                return
+            # Then check BaseThemes
+            if self._copy_base_theme_file(source_report_dir, target_report_dir, theme_name):
+                return
+        elif theme_type == "RegisteredResources":
+            # Copy from RegisteredResources
+            self._copy_registered_theme_file(source_report_dir, target_report_dir, theme_name)
+        
+        self.log_callback(f"     ⚠️ Could not find theme file: {theme_name}")
+    
+    def _copy_builtin_theme_file(self, source_report_dir: Path, target_report_dir: Path,
+                                theme_name: str) -> bool:
+        """Copy a specific theme file from BuiltInThemes directory."""
+        source_file = source_report_dir / "StaticResources" / "SharedResources" / "BuiltInThemes" / f"{theme_name}.json"
+        
+        if not source_file.exists():
+            return False
+        
+        target_dir = target_report_dir / "StaticResources" / "SharedResources" / "BuiltInThemes"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        
+        target_file = target_dir / f"{theme_name}.json"
+        shutil.copy2(source_file, target_file)
+        self.log_callback(f"     ✅ Copied built-in theme: {theme_name}.json")
+        return True
+    
+    def _copy_base_theme_file(self, source_report_dir: Path, target_report_dir: Path,
+                             theme_name: str) -> bool:
+        """Copy a specific theme file from BaseThemes directory."""
+        source_file = source_report_dir / "StaticResources" / "SharedResources" / "BaseThemes" / f"{theme_name}.json"
+        
+        if not source_file.exists():
+            return False
+        
+        target_dir = target_report_dir / "StaticResources" / "SharedResources" / "BaseThemes"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        
+        target_file = target_dir / f"{theme_name}.json"
+        shutil.copy2(source_file, target_file)
+        self.log_callback(f"     ✅ Copied base theme: {theme_name}.json")
+        return True
+    
+    def _copy_registered_theme_file(self, source_report_dir: Path, target_report_dir: Path,
+                                   theme_name: str) -> bool:
+        """Copy a specific theme file from RegisteredResources directory."""
+        # Look for the theme file (might have a different filename)
+        source_reg_dir = source_report_dir / "StaticResources" / "RegisteredResources"
+        
+        if not source_reg_dir.exists():
+            return False
+        
+        # Find theme file by name (might be named differently)
+        theme_file = None
+        for json_file in source_reg_dir.glob("*.json"):
+            try:
+                with open(json_file, 'r', encoding='utf-8') as f:
+                    theme_data = json.load(f)
+                if theme_data.get("name") == theme_name:
+                    theme_file = json_file
+                    break
+            except:
+                continue
+        
+        if not theme_file:
+            return False
+        
+        target_dir = target_report_dir / "StaticResources" / "RegisteredResources"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        
+        target_file = target_dir / theme_file.name
+        shutil.copy2(theme_file, target_file)
+        self.log_callback(f"     ✅ Copied registered theme: {theme_file.name}")
+        return True
+    
+    def _copy_theme_directory(self, source_report_dir: Path, target_report_dir: Path, 
+                             theme_dir_name: str) -> None:
+        """Copy a theme directory (BaseThemes or BuiltInThemes)."""
+        source_theme_dir = source_report_dir / "StaticResources" / "SharedResources" / theme_dir_name
+        target_theme_dir = target_report_dir / "StaticResources" / "SharedResources" / theme_dir_name
+        
+        if not source_theme_dir.exists():
+            return
+        
+        # Create target directory
+        target_theme_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Copy all theme files
+        for theme_file in source_theme_dir.glob("*.json"):
+            target_file = target_theme_dir / theme_file.name
+            shutil.copy2(theme_file, target_file)
+            self.log_callback(f"     ✅ Copied theme file: {theme_dir_name}/{theme_file.name}")
+    
+    def _copy_registered_themes(self, source_report_dir: Path, target_report_dir: Path) -> None:
+        """Copy custom theme files from RegisteredResources."""
+        source_reg_dir = source_report_dir / "StaticResources" / "RegisteredResources"
+        target_reg_dir = target_report_dir / "StaticResources" / "RegisteredResources"
+        
+        if not source_reg_dir.exists():
+            return
+        
+        target_reg_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Copy JSON files that might be custom themes
+        for theme_file in source_reg_dir.glob("*.json"):
+            target_file = target_reg_dir / theme_file.name
+            shutil.copy2(theme_file, target_file)
+            self.log_callback(f"     ✅ Copied registered theme: {theme_file.name}")
+    
+    def _verify_theme_configuration(self, output_report_dir: Path) -> None:
+        """Verify that the theme configuration is correct."""
+        output_json = output_report_dir / "definition" / "report.json"
+        
+        if not output_json.exists():
+            self.log_callback("     ⚠️ No report.json found for verification")
+            return
+        
+        try:
+            with open(output_json, 'r', encoding='utf-8') as f:
+                report_data = json.load(f)
+            
+            theme_collection = report_data.get("themeCollection", {})
+            if theme_collection:
+                custom_theme = theme_collection.get("customTheme", {})
+                base_theme = theme_collection.get("baseTheme", {})
+                
+                if custom_theme:
+                    theme_name = custom_theme.get("name", "")
+                    self.log_callback(f"     ✅ Theme configuration verified: Active theme is {theme_name}")
+                elif base_theme:
+                    theme_name = base_theme.get("name", "")
+                    self.log_callback(f"     ✅ Theme configuration verified: Base theme is {theme_name}")
+                else:
+                    self.log_callback("     ⚠️ Theme collection exists but no themes defined")
+            else:
+                self.log_callback("     ⚠️ No theme collection found in output")
+                
+        except Exception as e:
+            self.log_callback(f"     ⚠️ Theme verification failed: {e}")
 
 # =============================================================================
 # MERGER ENGINE
