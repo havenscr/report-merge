@@ -462,6 +462,144 @@ class UIManager:
             title="Export Analysis Log", defaultextension=".txt",
             filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")]
         )
+    
+    # Additional helper methods for secure architecture
+    def show_error(self, title: str, message: str):
+        """Show error dialog"""
+        messagebox.showerror(title, message)
+    
+    def show_info(self, title: str, message: str):
+        """Show info dialog"""
+        messagebox.showinfo(title, message)
+    
+    def show_confirmation(self, title: str, message: str) -> bool:
+        """Show confirmation dialog"""
+        return messagebox.askyesno(title, message)
+    
+    def open_company_website(self):
+        """Open company website"""
+        try:
+            import webbrowser
+            webbrowser.open(AppConstants.COMPANY_WEBSITE)
+            self.log_message(f"🌐 Opening {AppConstants.COMPANY_NAME} website...")
+        except Exception as e:
+            self.show_error("Error", f"Could not open website: {e}")
+    
+    def show_help_dialog(self):
+        """Show help dialog with PBIR requirement information."""
+        help_window = tk.Toplevel(self.root)
+        help_window.title(f"{AppConstants.APP_NAME} - Help")
+        help_window.geometry("650x650")
+        help_window.resizable(False, False)
+        help_window.transient(self.root)
+        help_window.grab_set()
+        
+        # Center window
+        help_window.geometry(f"+{self.root.winfo_rootx() + 50}+{self.root.winfo_rooty() + 50}")
+        
+        self._create_help_content(help_window)
+    
+    def show_about_dialog(self):
+        """Show about dialog."""
+        about_window = tk.Toplevel(self.root)
+        about_window.title(f"About - {AppConstants.APP_NAME}")
+        about_window.geometry("500x490")
+        about_window.resizable(False, False)
+        about_window.transient(self.root)
+        about_window.grab_set()
+        
+        # Center window
+        about_window.geometry(f"+{self.root.winfo_rootx() + 100}+{self.root.winfo_rooty() + 100}")
+        
+        self._create_about_content(about_window)
+    
+    def _create_help_content(self, help_window):
+        """Create help content"""
+        help_window.configure(bg=AppConstants.COLORS['background'])
+        
+        main_frame = ttk.Frame(help_window, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Header
+        ttk.Label(main_frame, text=f"❓ {AppConstants.APP_NAME} - Help", 
+                 font=('Segoe UI', 16, 'bold'), 
+                 foreground=AppConstants.COLORS['primary']).pack(anchor=tk.W, pady=(0, 20))
+        
+        # PBIR Requirement Section
+        pbir_frame = ttk.Frame(main_frame)
+        pbir_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        warning_container = tk.Frame(pbir_frame, bg=AppConstants.COLORS['warning'], 
+                                   padx=15, pady=10, relief='solid', borderwidth=2)
+        warning_container.pack(fill=tk.X)
+        
+        ttk.Label(warning_container, text="⚠️  IMPORTANT DISCLAIMERS & REQUIREMENTS", 
+                 font=('Segoe UI', 12, 'bold'), 
+                 background=AppConstants.COLORS['warning'],
+                 foreground=AppConstants.COLORS['surface']).pack(anchor=tk.W)
+        
+        warnings = [
+            "• This tool ONLY works with PBIP enhanced report format (PBIR) files",
+            "• This is NOT officially supported by Microsoft - use at your own discretion",
+            "• Look for .pbip files with definition\\ folder (not report.json files)", 
+            "• Always keep backups of your original reports before merging",
+            "• Test thoroughly and validate merged results before production use",
+            "• Enable 'Store reports using enhanced metadata format (PBIR)' in Power BI Desktop"
+        ]
+        
+        for warning in warnings:
+            ttk.Label(warning_container, text=warning, font=('Segoe UI', 10),
+                     background=AppConstants.COLORS['warning'],
+                     foreground=AppConstants.COLORS['surface']).pack(anchor=tk.W, pady=1)
+        
+        # Close button
+        ttk.Button(help_window, text="❌ Close", command=help_window.destroy).place(
+            relx=1.0, rely=1.0, anchor='se', x=-10, y=-15)
+        
+        help_window.bind('<Escape>', lambda e: help_window.destroy())
+    
+    def _create_about_content(self, about_window):
+        """Create about content"""
+        about_window.configure(bg=AppConstants.COLORS['background'])
+        
+        main_frame = ttk.Frame(about_window, padding="30")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Header
+        ttk.Label(main_frame, text="🚀", font=('Segoe UI', 48)).pack()
+        ttk.Label(main_frame, text=AppConstants.APP_NAME, font=('Segoe UI', 18, 'bold'),
+                 foreground=AppConstants.COLORS['primary']).pack(pady=(10, 5))
+        ttk.Label(main_frame, text=AppConstants.APP_VERSION, font=('Segoe UI', 12),
+                 foreground=AppConstants.COLORS['text_secondary']).pack()
+        
+        # Description
+        desc_frame = ttk.Frame(main_frame)
+        desc_frame.pack(pady=(20, 0))
+        
+        description = [
+            f"The {AppConstants.APP_NAME} intelligently combines",
+            "Power BI thin reports while preserving all content.",
+            "",
+            "⚠️ Requires PBIP format (PBIR) files only",
+            "⚠️ NOT officially supported by Microsoft",
+            "",
+            f"Built by {AppConstants.COMPANY_FOUNDER}",
+            f"of {AppConstants.COMPANY_NAME}"
+        ]
+        
+        for line in description:
+            ttk.Label(desc_frame, text=line, font=('Segoe UI', 10)).pack(pady=1)
+        
+        # Footer
+        footer_frame = ttk.Frame(main_frame)
+        footer_frame.pack(fill=tk.X, pady=(30, 0))
+        
+        ttk.Button(footer_frame, text="🌐 Visit Website", 
+                  command=self.open_company_website).pack(side=tk.LEFT)
+        ttk.Button(footer_frame, text="❌ Close", 
+                  command=about_window.destroy).pack(side=tk.RIGHT)
+        
+        about_window.bind('<Escape>', lambda e: about_window.destroy())
 
 # =============================================================================
 # MAIN APPLICATION - SIMPLIFIED
