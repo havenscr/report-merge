@@ -65,7 +65,7 @@ This tool **ONLY** works with **PBIP files** in the enhanced report format (PBIR
 
 ### Option 1: Download Release (Recommended)
 1. **Download** the latest release from the [Releases page](../../releases)
-2. **Run** the `PowerBIReportMerger.msi` installer
+2. **Run** the `PowerBIReportMerger.exe` installer
 3. **Launch** from Start Menu or desktop shortcut
 4. The tool will integrate with Power BI Desktop as an External Tool
 
