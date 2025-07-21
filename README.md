@@ -73,7 +73,7 @@ This tool **ONLY** works with **PBIP files** in the enhanced report format (PBIR
 1. **Clone** this repository
 2. **Install** Python 3.8+ from [python.org](https://python.org/downloads)
 3. **Navigate** to the source folder
-4. **Run** `run_security_enhanced.bat`
+4. **Run** `run_pbi_report_merger.bat`
 
 ---
 
