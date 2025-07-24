@@ -1036,6 +1036,12 @@ class MergerEngine:
         # Rebuild pages.json after merging
         self._rebuild_pages_json(output_report_dir / "definition" / "pages")
         
+        # Clean any non-standard properties
+        self._clean_non_standard_properties(output_report_dir)
+        
+        # Verify bookmark integrity after merge
+        self._verify_bookmark_integrity(output_report_dir)
+        
         return merge_stats
     
     def _finalize_merge_output(self, output_path: str, merge_stats: Dict[str, int]):
@@ -1076,8 +1082,12 @@ class MergerEngine:
         except Exception as e:
             self.log_callback(f"   ⚠️ Warning: Cleanup error: {e}")
     
+    def _generate_unique_id(self) -> str:
+        """Generate a unique ID for Power BI elements."""
+        return str(uuid.uuid4())
+    
     def _merge_pages_smart(self, source_report_dir: Path, target_report_dir: Path, source_name: str) -> int:
-        """Smart page merging with conflict resolution."""
+        """Smart page merging with proper ID regeneration."""
         source_pages_dir = source_report_dir / "definition" / "pages"
         target_pages_dir = target_report_dir / "definition" / "pages"
         
@@ -1087,31 +1097,34 @@ class MergerEngine:
         existing_pages = {d.name for d in target_pages_dir.iterdir() if d.is_dir() and d.name != "pages.json"}
         merged_count = 0
         
+        # Create mapping of old page IDs to new page IDs
+        self._page_id_mapping = {}
+        
         for page_dir in source_pages_dir.iterdir():
             if page_dir.is_dir() and page_dir.name != "pages.json":
                 
-                # Resolve naming conflicts
-                new_name = page_dir.name
-                counter = 1
-                while new_name in existing_pages:
-                    new_name = f"{page_dir.name}_{source_name}_{counter}"
-                    counter += 1
+                # Generate new unique directory name
+                new_page_id = self._generate_unique_id()
+                target_page_dir = target_pages_dir / new_page_id
                 
-                target_page_dir = target_pages_dir / new_name
+                # Store mapping for bookmark updates
+                old_page_id = page_dir.name
+                self._page_id_mapping[old_page_id] = new_page_id
+                
+                # Copy page directory
                 shutil.copytree(page_dir, target_page_dir)
                 
-                # Update page metadata if renamed
-                if new_name != page_dir.name:
-                    self._update_page_metadata(target_page_dir, source_name)
+                # Update page with new IDs and metadata
+                self._update_page_with_new_ids(target_page_dir, source_name)
                 
-                existing_pages.add(new_name)
+                existing_pages.add(new_page_id)
                 merged_count += 1
-                self.log_callback(f"     ✅ Merged page: {page_dir.name}")
+                self.log_callback(f"     ✅ Merged page: {page_dir.name} (new ID: {new_page_id})")
         
         return merged_count
     
-    def _update_page_metadata(self, page_dir: Path, source_name: str):
-        """Update page metadata after renaming."""
+    def _update_page_with_new_ids(self, page_dir: Path, source_name: str):
+        """Update page with new unique IDs and metadata."""
         page_json_file = page_dir / "page.json"
         
         if not page_json_file.exists():
@@ -1121,12 +1134,27 @@ class MergerEngine:
             with open(page_json_file, 'r', encoding='utf-8') as f:
                 page_data = json.load(f)
             
-            # Update display name and internal name
-            if "displayName" in page_data:
-                page_data["displayName"] = f"{page_data['displayName']} ({source_name})"
+            # Generate new page ID
+            if 'id' in page_data:
+                page_data['id'] = self._generate_unique_id()
             
+            # Keep original display name (no need to modify it)
+            
+            # Generate new name (internal identifier)
             if "name" in page_data:
-                page_data["name"] = f"{page_data['name']}_{source_name}"
+                page_data["name"] = self._generate_unique_id()
+            
+            # Update visual container IDs (they get new IDs when merging reports)
+            if 'visualContainers' in page_data:
+                for visual in page_data['visualContainers']:
+                    if isinstance(visual, dict) and 'id' in visual:
+                        visual['id'] = self._generate_unique_id()
+                    # Update visual config IDs if present
+                    if 'config' in visual:
+                        self._update_nested_ids(visual['config'])
+            
+            # Update any other IDs in the page structure
+            self._update_nested_ids(page_data)
             
             with open(page_json_file, 'w', encoding='utf-8') as f:
                 json.dump(page_data, f, indent=2)
@@ -1134,8 +1162,22 @@ class MergerEngine:
         except Exception as e:
             self.log_callback(f"       ⚠️ Warning: Could not update page metadata: {e}")
     
+    def _update_nested_ids(self, data: Union[dict, list]):
+        """Recursively update any 'id' fields found in nested structures."""
+        if isinstance(data, dict):
+            for key, value in data.items():
+                if key == 'id' and isinstance(value, str) and len(value) > 10:
+                    # Likely a GUID, replace it
+                    data[key] = self._generate_unique_id()
+                elif isinstance(value, (dict, list)):
+                    self._update_nested_ids(value)
+        elif isinstance(data, list):
+            for item in data:
+                if isinstance(item, (dict, list)):
+                    self._update_nested_ids(item)
+    
     def _merge_bookmarks_smart(self, source_report_dir: Path, target_report_dir: Path, source_name: str) -> int:
-        """Smart bookmark merging."""
+        """Smart bookmark merging that preserves existing bookmarks and handles groups."""
         source_bookmarks_dir = source_report_dir / "definition" / "bookmarks"
         target_bookmarks_dir = target_report_dir / "definition" / "bookmarks"
         
@@ -1143,49 +1185,309 @@ class MergerEngine:
             return 0
         
         target_bookmarks_dir.mkdir(parents=True, exist_ok=True)
-        existing_bookmarks = {f.name for f in target_bookmarks_dir.glob("*.bookmark.json")}
+        
+        # IMPORTANT: Count existing bookmarks first
+        existing_bookmark_count = len(list(target_bookmarks_dir.glob("*.bookmark.json")))
+        self.log_callback(f"     📚 Found {existing_bookmark_count} existing bookmarks in target")
+        
+        # Load existing bookmark groups from target
+        existing_groups = self._load_bookmark_groups(target_bookmarks_dir)
+        self.log_callback(f"     📁 Found {len(existing_groups)} existing bookmark groups")
+        
+        # Create mapping for bookmark IDs (old -> new)
+        bookmark_id_mapping = {}
+        
+        # Now add new bookmarks from source
         merged_count = 0
         
         for bookmark_file in source_bookmarks_dir.glob("*.bookmark.json"):
-            # Resolve naming conflicts
-            new_name = bookmark_file.name
-            counter = 1
-            while new_name in existing_bookmarks:
-                name_part = bookmark_file.stem.replace(".bookmark", "")
-                new_name = f"{name_part}_{source_name}_{counter}.bookmark.json"
-                counter += 1
-            
-            target_file = target_bookmarks_dir / new_name
-            shutil.copy2(bookmark_file, target_file)
-            
-            existing_bookmarks.add(new_name)
-            merged_count += 1
-            self.log_callback(f"     ✅ Merged bookmark: {bookmark_file.name}")
+            old_id = bookmark_file.stem.replace('.bookmark', '')
+            # Copy and update bookmark with new IDs and page mappings
+            new_id = self._copy_and_update_bookmark_with_mapping(bookmark_file, target_bookmarks_dir, source_name)
+            if new_id:
+                bookmark_id_mapping[old_id] = new_id
+                merged_count += 1
+                self.log_callback(f"     ✅ Merged bookmark: {bookmark_file.name} -> {new_id}")
         
-        # Update bookmarks.json
+        # Merge bookmark groups
+        self._merge_bookmark_groups(source_bookmarks_dir, target_bookmarks_dir, bookmark_id_mapping, source_name)
+        
+        # Update bookmarks.json with ALL bookmarks (existing + new)
         self._update_bookmarks_json(target_bookmarks_dir)
+        
+        total_bookmarks = existing_bookmark_count + merged_count
+        self.log_callback(f"     📊 Total bookmarks after merge: {total_bookmarks}")
         
         return merged_count
     
+    def _copy_and_update_bookmark_with_mapping(self, source_bookmark: Path, target_dir: Path, source_name: str) -> Optional[str]:
+        """Copy bookmark with new unique IDs and update page references. Returns new ID if successful."""
+        try:
+            with open(source_bookmark, 'r', encoding='utf-8') as f:
+                bookmark_data = json.load(f)
+            
+            # Generate new unique ID
+            new_bookmark_id = self._generate_unique_id()
+            
+            # Update bookmark ID
+            if 'id' in bookmark_data:
+                bookmark_data['id'] = new_bookmark_id
+            
+            # Update name to use new ID
+            if 'name' in bookmark_data:
+                bookmark_data['name'] = new_bookmark_id
+            
+            # Keep original display name for bookmarks too
+            
+            # Update page references using the mapping
+            if 'explorationState' in bookmark_data:
+                exploration = bookmark_data['explorationState']
+                if 'activeSection' in exploration:
+                    old_page_id = exploration['activeSection']
+                    # Check if we have a mapping for this page
+                    if hasattr(self, '_page_id_mapping') and old_page_id in self._page_id_mapping:
+                        new_page_id = self._page_id_mapping[old_page_id]
+                        exploration['activeSection'] = new_page_id
+                        self.log_callback(f"       🔄 Updated bookmark page reference: {old_page_id} → {new_page_id}")
+                        
+                        # Update 'sections' object inside explorationState - it's a dict with page IDs as keys
+                        if 'sections' in exploration and isinstance(exploration['sections'], dict):
+                            old_sections = exploration['sections']
+                            new_sections = {}
+                            
+                            # Update the page ID keys in the sections object
+                            for section_key, section_data in old_sections.items():
+                                if section_key == old_page_id:
+                                    # Replace old page ID key with new one
+                                    new_sections[new_page_id] = section_data
+                                else:
+                                    # Keep other sections as-is
+                                    new_sections[section_key] = section_data
+                            
+                            exploration['sections'] = new_sections
+                            self.log_callback(f"       🔄 Updated sections object: {old_page_id} → {new_page_id}")
+                
+
+            
+            # Update any nested IDs
+            if 'options' in bookmark_data:
+                self._update_nested_ids(bookmark_data['options'])
+            
+            # Generate new filename based on new ID
+            new_filename = f"{new_bookmark_id}.bookmark.json"
+            target_file = target_dir / new_filename
+            
+            with open(target_file, 'w', encoding='utf-8') as f:
+                json.dump(bookmark_data, f, indent=2)
+            
+            return new_bookmark_id
+            
+        except Exception as e:
+            self.log_callback(f"       ⚠️ Warning: Could not update bookmark: {e}")
+            return None
+    
+    def _copy_and_update_bookmark(self, source_bookmark: Path, target_dir: Path, source_name: str) -> bool:
+        """Copy bookmark with new unique IDs."""
+        try:
+            with open(source_bookmark, 'r', encoding='utf-8') as f:
+                bookmark_data = json.load(f)
+            
+            # Generate new unique ID
+            new_bookmark_id = self._generate_unique_id()
+            
+            # Update bookmark ID
+            if 'id' in bookmark_data:
+                bookmark_data['id'] = new_bookmark_id
+            
+            # Update name to use new ID
+            if 'name' in bookmark_data:
+                bookmark_data['name'] = new_bookmark_id
+            
+            # Keep original display name for bookmarks too
+            
+            # Update any page/visual references with new IDs if needed
+            if 'options' in bookmark_data:
+                self._update_nested_ids(bookmark_data['options'])
+            
+            # IMPORTANT: Check and update page references in explorationState
+            if 'explorationState' in bookmark_data:
+                exploration = bookmark_data['explorationState']
+                if 'activeSection' in exploration:
+                    # activeSection contains the page directory name
+                    # We'll update this when we have the page mapping available
+                    pass
+            
+            # Generate new filename based on new ID
+            new_filename = f"{new_bookmark_id}.bookmark.json"
+            target_file = target_dir / new_filename
+            
+            with open(target_file, 'w', encoding='utf-8') as f:
+                json.dump(bookmark_data, f, indent=2)
+            
+            return True
+            
+        except Exception as e:
+            self.log_callback(f"       ⚠️ Warning: Could not update bookmark: {e}")
+            return False
+    
+    def _load_bookmark_groups(self, bookmarks_dir: Path) -> List[Dict[str, Any]]:
+        """Load existing bookmark groups from bookmarks.json."""
+        groups = []
+        bookmarks_json = bookmarks_dir / "bookmarks.json"
+        
+        if not bookmarks_json.exists():
+            return groups
+        
+        try:
+            with open(bookmarks_json, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Check for groups in the bookmarks.json - groups are items with 'children'
+            if 'items' in data:
+                for item in data['items']:
+                    if 'children' in item:
+                        # This is a group
+                        groups.append({
+                            'name': item.get('name', ''),
+                            'displayName': item.get('displayName', ''),
+                            'children': item.get('children', [])
+                        })
+            
+            return groups
+        except Exception as e:
+            self.log_callback(f"       ⚠️ Could not load bookmark groups: {e}")
+            return groups
+    
+    def _merge_bookmark_groups(self, source_bookmarks_dir: Path, target_bookmarks_dir: Path, 
+                              bookmark_id_mapping: Dict[str, str], source_name: str) -> None:
+        """Merge bookmark groups from source to target."""
+        source_bookmarks_json = source_bookmarks_dir / "bookmarks.json"
+        
+        if not source_bookmarks_json.exists():
+            return
+        
+        try:
+            # Load source groups
+            with open(source_bookmarks_json, 'r', encoding='utf-8') as f:
+                source_data = json.load(f)
+            
+            # Get source groups structure
+            source_items = source_data.get('items', [])
+            source_groups = []
+            
+            # Find groups (items with 'children')
+            for item in source_items:
+                if 'children' in item:
+                    source_groups.append(item)
+            
+            if not source_groups:
+                return
+                
+            self.log_callback(f"     📁 Found {len(source_groups)} bookmark groups to merge")
+            
+            # Save new groups to be added later
+            self._temp_bookmark_groups = []
+            for group in source_groups:
+                # Generate new group ID
+                new_group_id = self._generate_unique_id()
+                new_group = {
+                    'name': new_group_id,
+                    'displayName': f"{group.get('displayName', 'Group')} ({source_name})",
+                    'children': []
+                }
+                
+                # Update bookmark references with new IDs
+                if 'children' in group:
+                    for old_bookmark_id in group['children']:
+                        if old_bookmark_id in bookmark_id_mapping:
+                            new_group['children'].append(bookmark_id_mapping[old_bookmark_id])
+                        else:
+                            self.log_callback(f"       ⚠️ Bookmark {old_bookmark_id} not found in mapping")
+                
+                # Only add group if it has children
+                if new_group['children']:
+                    self._temp_bookmark_groups.append(new_group)
+                    self.log_callback(f"       ✅ Prepared bookmark group for merge: {new_group['displayName']}")
+            
+        except Exception as e:
+            self.log_callback(f"       ⚠️ Error merging bookmark groups: {e}")
+    
     def _update_bookmarks_json(self, bookmarks_dir: Path):
-        """Update bookmarks.json file."""
+        """Update bookmarks.json file with correct schema and groups."""
         bookmark_files = list(bookmarks_dir.glob("*.bookmark.json"))
         
         if not bookmark_files:
             return
         
+        # Log bookmark files found
+        self.log_callback(f"       📚 Found {len(bookmark_files)} total bookmark files")
+        
+        # Load existing structure first - including groups and non-grouped bookmarks
+        existing_items = []
+        existing_groups = []
+        existing_non_grouped_bookmarks = []
+        bookmarks_json_file = bookmarks_dir / "bookmarks.json"
+        
+        if bookmarks_json_file.exists():
+            try:
+                with open(bookmarks_json_file, 'r', encoding='utf-8') as f:
+                    existing_data = json.load(f)
+                
+                # Parse existing items
+                if 'items' in existing_data:
+                    for item in existing_data['items']:
+                        if 'children' in item:
+                            # This is a group
+                            existing_groups.append(item)
+                        else:
+                            # This is a non-grouped bookmark
+                            existing_non_grouped_bookmarks.append(item['name'])
+                    
+                    if existing_groups:
+                        self.log_callback(f"       📁 Preserving {len(existing_groups)} existing bookmark groups")
+            except Exception as e:
+                self.log_callback(f"       ⚠️ Could not load existing structure: {e}")
+        
+        # Get all current bookmark names
+        all_bookmark_names = [bf.stem.replace(".bookmark", "") for bf in bookmark_files]
+        
+        # Build final items list
+        final_items = []
+        processed_bookmarks = set()
+        
+        # First, add all existing groups (with updated children if needed)
+        for group in existing_groups:
+            # Update children to only include bookmarks that still exist
+            updated_children = [child for child in group.get('children', []) if child in all_bookmark_names]
+            if updated_children:
+                group['children'] = updated_children
+                final_items.append(group)
+                processed_bookmarks.update(updated_children)
+        
+        # Add new groups from merge operation
+        if hasattr(self, '_temp_bookmark_groups') and self._temp_bookmark_groups:
+            for new_group in self._temp_bookmark_groups:
+                final_items.append(new_group)
+                processed_bookmarks.update(new_group.get('children', []))
+            self.log_callback(f"       📁 Added {len(self._temp_bookmark_groups)} new bookmark groups")
+            delattr(self, '_temp_bookmark_groups')
+        
+        # Finally, add any bookmarks that aren't in groups
+        for bookmark_name in all_bookmark_names:
+            if bookmark_name not in processed_bookmarks:
+                final_items.append({"name": bookmark_name})
+        
+        # Use correct schema URL (bookmarksMetadata!)
         bookmarks_data = {
-            "bookmarks": [{"name": bf.stem.replace(".bookmark", "")} for bf in bookmark_files]
+            "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/bookmarksMetadata/1.0.0/schema.json",
+            "items": final_items
         }
         
-        # Add schema if available
-        schema_url = AppConstants.SCHEMA_URLS.get('bookmarks')
-        if schema_url:
-            bookmarks_data["$schema"] = schema_url
-        
-        bookmarks_json_file = bookmarks_dir / "bookmarks.json"
         with open(bookmarks_json_file, 'w', encoding='utf-8') as f:
             json.dump(bookmarks_data, f, indent=2)
+        
+        self.log_callback(f"       ✅ Updated bookmarks.json with {len(all_bookmark_names)} total bookmarks")
+        self.log_callback(f"       📁 Structure: {len([i for i in final_items if 'children' in i])} groups, {len([i for i in final_items if 'children' not in i])} ungrouped bookmarks")
     
     def _merge_local_measures(self, report_a_dir: Path, report_b_dir: Path, target_report_dir: Path) -> int:
         """Merge local measures from thin reports."""
@@ -1282,7 +1584,7 @@ class MergerEngine:
             return entities_dict
     
     def _rebuild_pages_json(self, pages_dir: Path):
-        """Rebuild pages.json file after merging."""
+        """Rebuild pages.json file after merging with correct schema."""
         all_page_names = []
         
         for page_dir in pages_dir.iterdir():
@@ -1299,7 +1601,7 @@ class MergerEngine:
         if not all_page_names:
             return
         
-        # Create updated pages.json with correct structure
+        # Create updated pages.json with full schema URL
         pages_data = {
             "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/pagesMetadata/1.0.0/schema.json",
             "pageOrder": all_page_names,
@@ -1311,3 +1613,160 @@ class MergerEngine:
             json.dump(pages_data, f, indent=2)
         
         self.log_callback(f"     ✅ Rebuilt pages.json with {len(all_page_names)} pages")
+    
+    def _clean_non_standard_properties(self, report_dir: Path):
+        """Remove any non-standard properties that cause schema validation errors."""
+        self.log_callback("   🧹 Cleaning non-standard properties...")
+        
+        # Clean pages
+        pages_dir = report_dir / "definition" / "pages"
+        if pages_dir.exists():
+            for page_dir in pages_dir.iterdir():
+                if page_dir.is_dir() and page_dir.name != "pages.json":
+                    page_json = page_dir / "page.json"
+                    if page_json.exists():
+                        try:
+                            with open(page_json, 'r', encoding='utf-8') as f:
+                                data = json.load(f)
+                            
+                            # Remove non-standard properties
+                            modified = False
+                            non_standard_props = ['originalName', '_needsPageMapping']
+                            for prop in non_standard_props:
+                                if prop in data:
+                                    del data[prop]
+                                    modified = True
+                            
+                            if modified:
+                                with open(page_json, 'w', encoding='utf-8') as f:
+                                    json.dump(data, f, indent=2)
+                                self.log_callback(f"       ✅ Cleaned page: {page_dir.name}")
+                        except Exception as e:
+                            self.log_callback(f"       ⚠️ Could not clean page {page_dir.name}: {e}")
+        
+        # Clean bookmarks
+        bookmarks_dir = report_dir / "definition" / "bookmarks"
+        if bookmarks_dir.exists():
+            for bookmark_file in bookmarks_dir.glob("*.bookmark.json"):
+                try:
+                    with open(bookmark_file, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    
+                    # Remove non-standard properties
+                    modified = False
+                    non_standard_props = ['originalName', '_needsPageMapping']
+                    for prop in non_standard_props:
+                        if prop in data:
+                            del data[prop]
+                            modified = True
+                    
+                    if modified:
+                        with open(bookmark_file, 'w', encoding='utf-8') as f:
+                            json.dump(data, f, indent=2)
+                        self.log_callback(f"       ✅ Cleaned bookmark: {bookmark_file.name}")
+                except Exception as e:
+                    self.log_callback(f"       ⚠️ Could not clean bookmark {bookmark_file.name}: {e}")
+    
+    def _verify_bookmark_integrity(self, report_dir: Path):
+        """Verify that all bookmarks are properly registered after merge."""
+        self.log_callback("   🔍 Verifying bookmark integrity...")
+        
+        bookmarks_dir = report_dir / "definition" / "bookmarks"
+        if not bookmarks_dir.exists():
+            self.log_callback("     ⚠️ No bookmarks directory found")
+            return
+        
+        # Count actual bookmark files
+        bookmark_files = list(bookmarks_dir.glob("*.bookmark.json"))
+        self.log_callback(f"     📚 Found {len(bookmark_files)} bookmark files")
+        
+        # Check bookmarks.json
+        bookmarks_json = bookmarks_dir / "bookmarks.json"
+        if not bookmarks_json.exists():
+            self.log_callback("     ❌ bookmarks.json is missing!")
+            self._update_bookmarks_json(bookmarks_dir)
+            return
+        
+        try:
+            with open(bookmarks_json, 'r', encoding='utf-8') as f:
+                bookmarks_data = json.load(f)
+            
+            # Verify schema
+            schema = bookmarks_data.get('$schema', '')
+            if 'bookmarksMetadata' not in schema:
+                self.log_callback(f"     ❌ Incorrect schema in bookmarks.json: {schema}")
+                self._update_bookmarks_json(bookmarks_dir)
+            else:
+                self.log_callback("     ✅ Schema is correct")
+            
+            # Verify all bookmarks are listed
+            listed_bookmarks = set(item['name'] for item in bookmarks_data.get('items', []))
+            actual_bookmarks = set(bf.stem.replace('.bookmark', '') for bf in bookmark_files)
+            
+            missing = actual_bookmarks - listed_bookmarks
+            extra = listed_bookmarks - actual_bookmarks
+            
+            if missing:
+                self.log_callback(f"     ❌ Missing from bookmarks.json: {missing}")
+                self._update_bookmarks_json(bookmarks_dir)
+            elif extra:
+                self.log_callback(f"     ❌ Extra in bookmarks.json (files don't exist): {extra}")
+                self._update_bookmarks_json(bookmarks_dir)
+            else:
+                self.log_callback(f"     ✅ All {len(bookmark_files)} bookmarks properly registered")
+            
+            # Check individual bookmark files for page references
+            orphaned_bookmarks = []
+            for bf in bookmark_files:
+                try:
+                    with open(bf, 'r', encoding='utf-8') as f:
+                        bm_data = json.load(f)
+                    if 'explorationState' in bm_data and 'activeSection' in bm_data['explorationState']:
+                        page_ref = bm_data['explorationState']['activeSection']
+                        # Check if this page exists
+                        pages_dir = report_dir / "definition" / "pages"
+                        if not (pages_dir / page_ref).exists():
+                            orphaned_bookmarks.append((bf.stem, page_ref))
+                except Exception:
+                    pass
+            
+            if orphaned_bookmarks:
+                self.log_callback(f"     ⚠️ Found {len(orphaned_bookmarks)} bookmarks with missing page references")
+                for bm_name, page_ref in orphaned_bookmarks[:3]:  # Show first 3
+                    self.log_callback(f"       - {bm_name} → missing page: {page_ref}")
+                
+        except Exception as e:
+            self.log_callback(f"     ❌ Error verifying bookmarks.json: {e}")
+            self._update_bookmarks_json(bookmarks_dir)
+    
+    def ensure_proper_schemas(self, report_dir: Path):
+        """Ensure all JSON files have proper schema references."""
+        self.log_callback("   🔧 Validating and fixing schema references...")
+        
+        schema_fixes = [
+            ("definition/bookmarks/bookmarks.json", 
+             "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/bookmarksMetadata/1.0.0/schema.json"),
+            ("definition/pages/pages.json",
+             "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/pagesMetadata/1.0.0/schema.json"),
+            ("definition/report.json",
+             "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/report/1.0.0/schema.json"),
+            ("definition/reportExtensions.json",
+             "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/reportExtension/1.0.0/schema.json")
+        ]
+        
+        for relative_path, schema_url in schema_fixes:
+            file_path = report_dir / relative_path
+            if file_path.exists():
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    
+                    # Update schema URL
+                    data['$schema'] = schema_url
+                    
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        json.dump(data, f, indent=2)
+                    
+                    self.log_callback(f"     ✅ Fixed schema in {relative_path}")
+                except Exception as e:
+                    self.log_callback(f"     ⚠️ Could not fix schema in {relative_path}: {e}")
